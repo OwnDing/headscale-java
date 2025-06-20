@@ -218,7 +218,7 @@ This project is licensed under the MIT License - see the [LICENSE](LICENSE) file
 
 If you encounter any issues or have questions:
 
-1. Check the [Issues](https://github.com/your-username/headscale/issues) page
+1. Check the [Issues](https://github.com/OwnDing/headscale/issues) page
 2. Create a new issue with detailed information
 3. Include logs and configuration (without sensitive data)
 
