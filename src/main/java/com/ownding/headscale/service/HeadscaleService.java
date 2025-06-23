@@ -187,9 +187,20 @@ public class HeadscaleService {
     }
 
     /**
-     * Create a pre-auth key for a user
+     * Create a pre-auth key for a user with default 24-hour expiration
      */
     public HeadscalePreAuthKey createPreAuthKey(String username, Boolean reusable, Boolean ephemeral) throws IOException {
+        return createPreAuthKey(username, reusable, ephemeral, null);
+    }
+
+    /**
+     * Create a pre-auth key for a user with custom expiration time
+     * @param username 用户名
+     * @param reusable 是否可重用
+     * @param ephemeral 是否临时
+     * @param expirationHours 过期时间（小时），null 则默认 24 小时
+     */
+    public HeadscalePreAuthKey createPreAuthKey(String username, Boolean reusable, Boolean ephemeral, Integer expirationHours) throws IOException {
         if (StringUtils.isBlank(username)) {
             throw new IllegalArgumentException("Username cannot be blank");
         }
@@ -203,8 +214,11 @@ public class HeadscaleService {
             throw new IOException("用户不存在: " + username);
         }
 
-        // Create request with user ID instead of username
-        HeadscaleCreatePreAuthKeyRequest request = new HeadscaleCreatePreAuthKeyRequest(user.getId(), reusable, ephemeral);
+        // Calculate expiration time
+        String expirationTime = calculateExpirationTime(expirationHours);
+
+        // Create request with user ID and expiration time
+        HeadscaleCreatePreAuthKeyRequest request = new HeadscaleCreatePreAuthKeyRequest(user.getId(), reusable, ephemeral, expirationTime);
         String jsonBody = JSON.toJSONString(request);
         log.debug("Creating pre-auth key for user: {} (ID: {}) with request: {}", username, user.getId(), jsonBody);
 
@@ -232,14 +246,36 @@ public class HeadscaleService {
             String responseBody = response.body().string();
             log.debug("Create pre-auth key response: {}", responseBody);
 
-            // Try to parse as a direct object first
+            // Parse the response which has the format: {"preAuthKey": {...}}
             try {
-                return JSON.parseObject(responseBody, HeadscalePreAuthKey.class);
+                HeadscalePreAuthKeyResponse hResponse = JSON.parseObject(responseBody, HeadscalePreAuthKeyResponse.class);
+                if (hResponse != null && hResponse.getPreAuthKey() != null) {
+                    log.info("Successfully parsed PreAuth Key: id={}, key={}, expiration={}",
+                            hResponse.getPreAuthKey().getId(),
+                            hResponse.getPreAuthKey().getKey() != null ? "***" + hResponse.getPreAuthKey().getKey().substring(Math.max(0, hResponse.getPreAuthKey().getKey().length() - 4)) : "null",
+                            hResponse.getPreAuthKey().getExpiration());
+                    return hResponse.getPreAuthKey();
+                } else {
+                    log.error("Failed to parse PreAuth Key response: response or preAuthKey is null");
+                    return null;
+                }
             } catch (Exception e) {
-                // If that fails, try to parse as wrapped response
-                HeadscaleApiResponse<HeadscalePreAuthKey> apiResponse = JSON.parseObject(responseBody,
-                        new TypeReference<HeadscaleApiResponse<HeadscalePreAuthKey>>() {});
-                return apiResponse.getItem();
+                log.error("Failed to parse PreAuth Key response: {}", responseBody, e);
+                // Try fallback parsing methods
+                try {
+                    // Try to parse as a direct object (fallback)
+                    return JSON.parseObject(responseBody, HeadscalePreAuthKey.class);
+                } catch (Exception e2) {
+                    // Try to parse as wrapped response (another fallback)
+                    try {
+                        HeadscaleApiResponse<HeadscalePreAuthKey> apiResponse = JSON.parseObject(responseBody,
+                                new TypeReference<HeadscaleApiResponse<HeadscalePreAuthKey>>() {});
+                        return apiResponse.getItem();
+                    } catch (Exception e3) {
+                        log.error("All parsing methods failed for PreAuth Key response: {}", responseBody, e3);
+                        return null;
+                    }
+                }
             }
         }
     }
@@ -602,6 +638,28 @@ public class HeadscaleService {
             log.error("Failed to test Headscale connection", e);
             return false;
         }
+    }
+
+    /**
+     * Calculate expiration time for pre-auth key
+     * @param expirationHours 过期时间（小时），null 则默认 24 小时
+     * @return ISO 8601 格式的过期时间字符串
+     */
+    private String calculateExpirationTime(Integer expirationHours) {
+        // 默认 24 小时过期
+        int hours = (expirationHours != null && expirationHours > 0) ? expirationHours : 24;
+
+        // 计算过期时间
+        java.time.LocalDateTime now = java.time.LocalDateTime.now();
+        java.time.LocalDateTime expiration = now.plusHours(hours);
+
+        // 转换为 ISO 8601 格式 (RFC 3339)
+        // Headscale 期望的格式类似: "2024-01-01T12:00:00Z"
+        java.time.ZonedDateTime zonedExpiration = expiration.atZone(java.time.ZoneOffset.UTC);
+        String expirationTime = zonedExpiration.format(java.time.format.DateTimeFormatter.ISO_INSTANT);
+
+        log.info("Calculated expiration time: {} hours from now = {}", hours, expirationTime);
+        return expirationTime;
     }
 }
 

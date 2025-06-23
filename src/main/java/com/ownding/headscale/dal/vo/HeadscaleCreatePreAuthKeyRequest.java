@@ -33,4 +33,19 @@ public class HeadscaleCreatePreAuthKeyRequest {
         this.reusable = reusable;
         this.ephemeral = ephemeral;
     }
+
+    public HeadscaleCreatePreAuthKeyRequest(String user, Boolean reusable, Boolean ephemeral, String expiration) {
+        this.user = user;
+        this.reusable = reusable;
+        this.ephemeral = ephemeral;
+        this.expiration = expiration;
+    }
+
+    public HeadscaleCreatePreAuthKeyRequest(String user, Boolean reusable, Boolean ephemeral, String expiration, List<String> aclTags) {
+        this.user = user;
+        this.reusable = reusable;
+        this.ephemeral = ephemeral;
+        this.expiration = expiration;
+        this.aclTags = aclTags;
+    }
 }
